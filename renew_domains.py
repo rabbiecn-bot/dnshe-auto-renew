@@ -151,7 +151,7 @@ def send_telegram(content, title):
             print("推送失败:", str(e))
 
 
-def send_notification(content, title="DNSHE 域名自动续期报告"):
+def send_notification(content, title="DNSHE 域名自动续期报告——GitHub"):
     """
     通知通道（可并存，互不影响）：
     - SMTP：Secret SMTP_CONFIG（JSON）
