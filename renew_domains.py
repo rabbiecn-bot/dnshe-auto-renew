@@ -156,7 +156,7 @@ def send_telegram(content, title):
         resp = requests.post(relay_url, json={
             "token": token,
             "chat_id": chat_id,
-            "text": chunk,
+            "text": chunk + "\n🔄 (relay)",
             "disable_web_page_preview": True,
         }, headers={"X-Relay-Key": relay_key}, timeout=20)
         ok = resp.status_code < 400 and resp.json().get("ok") is True
