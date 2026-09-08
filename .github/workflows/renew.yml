@@ -32,6 +32,9 @@ jobs:
           # 通知：Telegram（可选）
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # 通知：Telegram 双重保险 relay（可选）
+          TG_RELAY_URL: ${{ secrets.TG_RELAY_URL }}
+          TG_RELAY_KEY: ${{ secrets.TG_RELAY_KEY }}
           # 通知：SMTP（可选，单个 JSON，见 README）
           SMTP_CONFIG: ${{ secrets.SMTP_CONFIG }}
         run: python renew_domains.py
