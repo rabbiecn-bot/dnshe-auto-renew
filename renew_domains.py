@@ -113,7 +113,7 @@ def send_smtp(content, title):
 
 
 def send_telegram(content, title):
-    """Telegram Bot 推送。失败只打日志，不抛。"""
+    """Telegram Bot 推送。失败只打日志，不抛。双重保险：直连失败自动走 tg-relay Worker。"""
     token = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
     chat_id = (os.environ.get("TELEGRAM_CHAT_ID") or "").strip()
     if not token or not chat_id:
@@ -133,23 +133,58 @@ def send_telegram(content, title):
         chunks.append(text[:cut])
         text = text[cut:].lstrip("\n")
 
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    for i, chunk in enumerate(chunks, 1):
-        if len(chunks) > 1:
-            chunk = f"({i}/{len(chunks)})\n{chunk}"
+    def _direct_send(chunk):
+        """第一通道：直连 api.telegram.org。成功返回 True。"""
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
         data = {
             "chat_id": chat_id,
             "text": chunk,
             "disable_web_page_preview": True,
         }
+        resp = requests.post(url, json=data, timeout=15)
+        ok = resp.status_code < 400 and resp.json().get("ok") is True
+        if not ok:
+            print("Telegram 推送失败 HTTP", resp.status_code, resp.text[:200])
+        return ok
+
+    def _relay_send(chunk):
+        """第二通道：经 tg-relay Worker 发送。成功返回 True。"""
+        relay_url = (os.environ.get("TG_RELAY_URL") or "").strip()
+        relay_key = (os.environ.get("TG_RELAY_KEY") or "").strip()
+        if not relay_url or not relay_key:
+            return False
+        resp = requests.post(relay_url, json={
+            "token": token,
+            "chat_id": chat_id,
+            "text": chunk,
+            "disable_web_page_preview": True,
+        }, headers={"X-Relay-Key": relay_key}, timeout=20)
+        ok = resp.status_code < 400 and resp.json().get("ok") is True
+        if not ok:
+            print("Telegram relay 兜底失败", resp.status_code, resp.text[:200])
+        return ok
+
+    for i, chunk in enumerate(chunks, 1):
+        if len(chunks) > 1:
+            chunk = f"({i}/{len(chunks)})\n{chunk}"
         try:
-            resp = requests.post(url, json=data, timeout=15)
-            print(f"Telegram 推送 [{i}/{len(chunks)}]:", resp.text)
-            if resp.status_code >= 400:
-                print("Telegram 推送失败 HTTP", resp.status_code)
+            if _direct_send(chunk):
+                print(f"Telegram 推送 [{i}/{len(chunks)}]: OK (直连)")
+                continue
+            print(f"Telegram 推送 [{i}/{len(chunks)}]: 直连失败，走 relay 兜底")
+            if _relay_send(chunk):
+                print(f"Telegram 推送 [{i}/{len(chunks)}]: OK (relay)")
+            else:
+                print(f"Telegram 推送 [{i}/{len(chunks)}]: 直连与 relay 均失败")
         except Exception as e:
             print("推送失败:", str(e))
-
+            try:
+                if _relay_send(chunk):
+                    print(f"Telegram 推送 [{i}/{len(chunks)}]: OK (relay, 直连异常)")
+                else:
+                    print(f"Telegram 推送 [{i}/{len(chunks)}]: relay 也失败")
+            except Exception as e2:
+                print("relay 推送失败:", str(e2))
 
 def send_notification(content, title="DNSHE 域名自动续期报告——GitHub"):
     """
